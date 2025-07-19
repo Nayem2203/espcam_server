@@ -2,7 +2,7 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const fs = require('fs');
 const app = express();
-const port = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3000;
 
 let latestImage = null;
 
@@ -37,6 +37,7 @@ app.get('/stream', (req, res) => {
   });
 });
 
-app.listen(port, () => {
-  console.log(`MJPEG server running on port ${port}`);
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
+
