@@ -8,7 +8,6 @@ const PORT = process.env.PORT || 10000;
 app.use(cors());
 app.use(express.static('public'));
 
-// Store uploaded image in memory
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
@@ -81,13 +80,51 @@ app.get('/stream', (req, res) => {
 app.get('/', (req, res) => {
   res.send(`
     <html>
+      <head>
+        <title>ESP32-CAM Video Stream</title>
+        <style>
+          body {
+            margin: 0;
+            padding: 10px;
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+          }
+          h1 {
+            font-size: 1.5em;
+            margin-bottom: 10px;
+          }
+          .video-container {
+            width: 100%;
+            max-width: 640px; /* Limit max width for smaller screens */
+            text-align: center;
+          }
+          img {
+            width: 100%;
+            height: auto;
+            max-height: 480px; /* Prevent overloading screen */
+            object-fit: contain; /* Maintain aspect ratio */
+            border: 1px solid #ccc;
+          }
+        </style>
+      </head>
       <body>
         <h1>ESP32-CAM Video Stream</h1>
-        <img src="/latest" alt="Video Stream" style="width:100%;">
+        <div class="video-container">
+          <img src="/latest" alt="Video Stream">
+        </div>
         <script>
-          setInterval(() => {
-            document.querySelector('img').src = '/latest?' + new Date().getTime();
-          }, 100);
+          function refreshImage() {
+            const img = document.querySelector('img');
+            img.src = '/latest?' + new Date().getTime();
+            img.onerror = () => {
+              setTimeout(refreshImage, 100); // Retry on error
+            };
+          }
+          setInterval(refreshImage, 100); // 100ms for smooth refresh
+          refreshImage();
         </script>
       </body>
     </html>
