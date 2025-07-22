@@ -1,8 +1,6 @@
 const express = require('express');
 const app = express();
 const multer = require('multer');
-const fs = require('fs');
-const path = require('path');
 const cors = require('cors');
 
 const PORT = process.env.PORT || 10000;
@@ -10,53 +8,47 @@ const PORT = process.env.PORT || 10000;
 app.use(cors());
 app.use(express.static('public'));
 
-// Ensure uploads directory exists
-const uploadsDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir);
-}
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, 'uploads/'),
-  filename: (req, file, cb) => cb(null, 'latest.jpg')
-});
+// Store uploaded image in memory
+const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
 let latestImage = null;
 
-// Upload endpoint
 app.post('/upload', upload.single('image'), (req, res) => {
-  if (req.file) {
-    const filePath = path.join(__dirname, 'uploads', 'latest.jpg');
-    if (fs.existsSync(filePath)) {
-      latestImage = fs.readFileSync(filePath);
-      console.log('Image uploaded, size:', latestImage.length);
+  try {
+    if (req.file && req.file.buffer) {
+      latestImage = req.file.buffer;
+      console.log('Image uploaded, size:', latestImage.length, 'at', new Date().toISOString());
       res.sendStatus(200);
     } else {
-      console.log('Upload failed: File not saved');
-      res.sendStatus(500);
+      console.log('No image uploaded');
+      res.sendStatus(400);
     }
-  } else {
-    console.log('No image uploaded');
-    res.sendStatus(400);
+  } catch (err) {
+    console.error('Upload error:', err.message);
+    res.sendStatus(500);
   }
 });
 
-// Serve latest image
 app.get('/latest', (req, res) => {
-  const filePath = path.join(__dirname, 'Uploads', 'latest.jpg');
-  if (latestImage && fs.existsSync(filePath)) {
-    res.writeHead(200, {
-      'Content-Type': 'image/jpeg',
-      'Content-Length': latestImage.length
-    });
-    res.write(latestImage);
-  } else {
-    res.status(404).send('No image available');
+  try {
+    if (latestImage) {
+      res.writeHead(200, {
+        'Content-Type': 'image/jpeg',
+        'Content-Length': latestImage.length,
+        'Cache-Control': 'no-cache'
+      });
+      res.write(latestImage);
+    } else {
+      console.log('No image available for /latest');
+      res.status(404).send('No image available');
+    }
+  } catch (err) {
+    console.error('Error serving /latest:', err.message);
+    res.status(500).send('Server error');
   }
 });
 
-// MJPEG stream
 app.get('/stream', (req, res) => {
   res.writeHead(200, {
     'Content-Type': 'multipart/x-mixed-replace; boundary=frame',
@@ -66,15 +58,18 @@ app.get('/stream', (req, res) => {
   });
 
   const interval = setInterval(() => {
-    const filePath = path.join(__dirname, 'Uploads', 'latest.jpg');
-    if (latestImage && fs.existsSync(filePath)) {
-      res.write(`--frame\r\n`);
-      res.write(`Content-Type: image/jpeg\r\n`);
-      res.write(`Content-Length: ${latestImage.length}\r\n\r\n`);
-      res.write(latestImage);
-      res.write('\r\n');
-    } else {
-      console.log('No image available for streaming');
+    try {
+      if (latestImage) {
+        res.write(`--frame\r\n`);
+        res.write(`Content-Type: image/jpeg\r\n`);
+        res.write(`Content-Length: ${latestImage.length}\r\n\r\n`);
+        res.write(latestImage);
+        res.write('\r\n');
+      } else {
+        console.log('No image available for streaming');
+      }
+    } catch (err) {
+      console.error('Stream error:', err.message);
     }
   }, 100);
 
@@ -83,7 +78,6 @@ app.get('/stream', (req, res) => {
   });
 });
 
-// Auto-refresh HTML
 app.get('/', (req, res) => {
   res.send(`
     <html>
