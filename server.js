@@ -5,13 +5,17 @@ const fs = require('fs');
 const path = require('path');
 const cors = require('cors');
 
-// Use environment port
 const PORT = process.env.PORT || 10000;
 
 app.use(cors());
 app.use(express.static('public'));
 
-// Store uploaded image on disk
+// Ensure uploads directory exists
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir);
+}
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, 'uploads/'),
   filename: (req, file, cb) => cb(null, 'latest.jpg')
@@ -20,21 +24,28 @@ const upload = multer({ storage });
 
 let latestImage = null;
 
-// Upload endpoint with logging
+// Upload endpoint
 app.post('/upload', upload.single('image'), (req, res) => {
   if (req.file) {
-    latestImage = fs.readFileSync(path.join(__dirname, 'Uploads', 'latest.jpg'));
-    console.log('Image uploaded, size:', latestImage.length);
-    res.sendStatus(200);
+    const filePath = path.join(__dirname, 'uploads', 'latest.jpg');
+    if (fs.existsSync(filePath)) {
+      latestImage = fs.readFileSync(filePath);
+      console.log('Image uploaded, size:', latestImage.length);
+      res.sendStatus(200);
+    } else {
+      console.log('Upload failed: File not saved');
+      res.sendStatus(500);
+    }
   } else {
     console.log('No image uploaded');
     res.sendStatus(400);
   }
 });
 
-// Serve latest image as JPEG
+// Serve latest image
 app.get('/latest', (req, res) => {
-  if (latestImage) {
+  const filePath = path.join(__dirname, 'Uploads', 'latest.jpg');
+  if (latestImage && fs.existsSync(filePath)) {
     res.writeHead(200, {
       'Content-Type': 'image/jpeg',
       'Content-Length': latestImage.length
@@ -55,7 +66,8 @@ app.get('/stream', (req, res) => {
   });
 
   const interval = setInterval(() => {
-    if (latestImage) {
+    const filePath = path.join(__dirname, 'Uploads', 'latest.jpg');
+    if (latestImage && fs.existsSync(filePath)) {
       res.write(`--frame\r\n`);
       res.write(`Content-Type: image/jpeg\r\n`);
       res.write(`Content-Length: ${latestImage.length}\r\n\r\n`);
@@ -64,14 +76,14 @@ app.get('/stream', (req, res) => {
     } else {
       console.log('No image available for streaming');
     }
-  }, 100); // 100ms for smoother streaming (~10 fps)
+  }, 100);
 
   req.on('close', () => {
     clearInterval(interval);
   });
 });
 
-// Serve HTML for auto-refreshing stream
+// Auto-refresh HTML
 app.get('/', (req, res) => {
   res.send(`
     <html>
@@ -81,14 +93,13 @@ app.get('/', (req, res) => {
         <script>
           setInterval(() => {
             document.querySelector('img').src = '/latest?' + new Date().getTime();
-          }, 100); // Refresh every 100ms
+          }, 100);
         </script>
       </body>
     </html>
   `);
 });
 
-// Start server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
