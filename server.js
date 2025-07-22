@@ -93,19 +93,19 @@ app.get('/', (req, res) => {
             align-items: center;
           }
           h1 {
-            font-size: 1.5em;
+            font-size: 1.2em;
             margin-bottom: 10px;
           }
           .video-container {
             width: 100%;
-            max-width: 640px; /* Limit max width for smaller screens */
+            max-width: 400px; // Match Flutter container
             text-align: center;
           }
           img {
             width: 100%;
             height: auto;
-            max-height: 480px; /* Prevent overloading screen */
-            object-fit: contain; /* Maintain aspect ratio */
+            max-height: 300px; // Match Flutter container
+            object-fit: contain;
             border: 1px solid #ccc;
           }
         </style>
@@ -120,10 +120,10 @@ app.get('/', (req, res) => {
             const img = document.querySelector('img');
             img.src = '/latest?' + new Date().getTime();
             img.onerror = () => {
-              setTimeout(refreshImage, 100); // Retry on error
+              setTimeout(refreshImage, 100);
             };
           }
-          setInterval(refreshImage, 100); // 100ms for smooth refresh
+          setInterval(refreshImage, 100);
           refreshImage();
         </script>
       </body>
