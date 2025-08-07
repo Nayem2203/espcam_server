@@ -8,13 +8,10 @@ const PORT = process.env.PORT || 10000;
 app.use(cors());
 app.use(express.static('public'));
 
-// ========================
-// 📸 VIDEO STREAMING PART
-// ========================
-
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
+// ========== VIDEO PART ==========
 let latestImage = null;
 
 app.post('/upload', upload.single('image'), (req, res) => {
@@ -43,11 +40,9 @@ app.get('/latest', (req, res) => {
       });
       res.write(latestImage);
     } else {
-      console.log('No image available for /latest');
       res.status(404).send('No image available');
     }
   } catch (err) {
-    console.error('Error serving /latest:', err.message);
     res.status(500).send('Server error');
   }
 });
@@ -68,8 +63,6 @@ app.get('/stream', (req, res) => {
         res.write(`Content-Length: ${latestImage.length}\r\n\r\n`);
         res.write(latestImage);
         res.write('\r\n');
-      } else {
-        console.log('No image available for streaming');
       }
     } catch (err) {
       console.error('Stream error:', err.message);
@@ -81,129 +74,72 @@ app.get('/stream', (req, res) => {
   });
 });
 
-// ========================
-// 🎤 AUDIO STREAMING PART
-// ========================
+// ========== AUDIO PART ==========
+let latestAudio = null;
 
-let audioBuffers = [];
-const MAX_BUFFERS = 50;
-
-// ESP32 posts raw audio (PCM/ADPCM) here
-app.post('/audio', (req, res) => {
-  const chunks = [];
-  req.on('data', chunk => chunks.push(chunk));
-  req.on('end', () => {
-    const buffer = Buffer.concat(chunks);
-    if (audioBuffers.length > MAX_BUFFERS) {
-      audioBuffers.shift(); // Remove oldest to keep memory low
+app.post('/upload-audio', upload.single('audio'), (req, res) => {
+  try {
+    if (req.file && req.file.buffer) {
+      latestAudio = req.file.buffer;
+      console.log('Audio uploaded, size:', latestAudio.length, 'at', new Date().toISOString());
+      res.sendStatus(200);
+    } else {
+      console.log('No audio uploaded');
+      res.sendStatus(400);
     }
-    audioBuffers.push(buffer);
-    res.sendStatus(200);
-  });
-});
-
-// Browser or app fetches latest audio chunk here
-app.get('/latest-audio', (req, res) => {
-  if (audioBuffers.length > 0) {
-    const buffer = audioBuffers.shift();
-    res.set({
-      'Content-Type': 'application/octet-stream',
-      'Content-Length': buffer.length,
-      'Cache-Control': 'no-cache'
-    });
-    res.end(buffer);
-  } else {
-    res.status(204).end(); // No audio yet
+  } catch (err) {
+    console.error('Audio upload error:', err.message);
+    res.sendStatus(500);
   }
 });
 
-// ========================
-// 🌐 FRONTEND TEST PAGE
-// ========================
+app.get('/latest-audio', (req, res) => {
+  try {
+    if (latestAudio) {
+      res.writeHead(200, {
+        'Content-Type': 'audio/wav',
+        'Content-Length': latestAudio.length,
+        'Cache-Control': 'no-cache'
+      });
+      res.write(latestAudio);
+    } else {
+      res.status(404).send('No audio available');
+    }
+  } catch (err) {
+    res.status(500).send('Audio server error');
+  }
+});
 
+// ========== HTML TEST PAGE ==========
 app.get('/', (req, res) => {
   res.send(`
     <html>
-      <head>
-        <title>ESP32-CAM Intercom</title>
-        <style>
-          body {
-            margin: 0;
-            padding: 10px;
-            font-family: Arial, sans-serif;
-            background-color: #f0f0f0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-          }
-          h1 {
-            font-size: 1.2em;
-            margin-bottom: 10px;
-          }
-          .container {
-            width: 100%;
-            max-width: 400px;
-            text-align: center;
-          }
-          img {
-            width: 100%;
-            height: auto;
-            max-height: 300px;
-            object-fit: contain;
-            border: 1px solid #ccc;
-          }
-          audio {
-            width: 100%;
-            margin-top: 20px;
-          }
-        </style>
-      </head>
+      <head><title>ESP32-CAM Video + Audio</title></head>
       <body>
-        <h1>ESP32-CAM Intercom System</h1>
-        <div class="container">
-          <img src="/latest" alt="Video Stream">
-          <audio id="player" autoplay controls></audio>
-        </div>
+        <h1>ESP32-CAM Video Stream</h1>
+        <img id="video" src="/latest" style="width:100%; max-width:400px;"><br>
+        <h2>Audio Playback</h2>
+        <audio id="audio" controls autoplay></audio>
+
         <script>
-          function refreshImage() {
-            const img = document.querySelector('img');
-            img.src = '/latest?' + new Date().getTime();
-            img.onerror = () => {
-              setTimeout(refreshImage, 100);
-            };
-          }
+          setInterval(() => {
+            document.getElementById('video').src = '/latest?' + new Date().getTime();
+          }, 100);
 
-          function fetchAudio() {
-            fetch('/latest-audio')
-              .then(res => {
-                if (res.status === 204) return;
-                return res.arrayBuffer();
-              })
-              .then(data => {
-                if (!data) return;
-                const blob = new Blob([data], { type: 'audio/raw' });
+          const audioElement = document.getElementById('audio');
+          setInterval(() => {
+            fetch('/latest-audio?' + new Date().getTime())
+              .then(res => res.blob())
+              .then(blob => {
                 const url = URL.createObjectURL(blob);
-                const player = document.getElementById('player');
-                player.src = url;
-              })
-              .catch(err => {
-                console.error('Audio fetch error', err);
+                audioElement.src = url;
               });
-          }
-
-          setInterval(refreshImage, 100);      // video refresh every 100ms
-          setInterval(fetchAudio, 500);        // audio chunk every 500ms
-          refreshImage();
-          fetchAudio();
+          }, 1000); // Play updated audio every second
         </script>
       </body>
     </html>
   `);
 });
-
-// ========================
-// 🚀 Start Server
-// ========================
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
