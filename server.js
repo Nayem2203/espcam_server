@@ -1,6 +1,7 @@
 const express = require('express');
 const multer = require('multer');
 const cors = require('cors');
+const http = require('http');
 const WebSocket = require('ws');
 
 const app = express();
@@ -10,7 +11,7 @@ app.use(cors());
 app.use(express.static('public'));
 app.use(express.json());
 
-// Multer storage
+// Multer storage for video images
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
@@ -80,15 +81,16 @@ app.get('/status', (req, res) => {
   res.json({ door: doorState });
 });
 
-// ========== WEBSOCKET ALERT ==========
-const wss = new WebSocket.Server({ port: 8080 });
-console.log("WebSocket server running on port 8080");
+// ========== HTTP + WebSocket SERVER ==========
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
 
 wss.on('connection', (ws) => {
   console.log("Flutter client connected via WS");
   ws.on('close', () => console.log("Flutter client disconnected"));
 });
 
+// Broadcast alert to all connected clients
 function broadcastAlert(message) {
   wss.clients.forEach(client => {
     if (client.readyState === WebSocket.OPEN) {
@@ -105,6 +107,6 @@ app.post('/alert', (req, res) => {
 });
 
 // ========== START SERVER ==========
-app.listen(PORT, () => {
-  console.log(`HTTP server running on port ${PORT}`);
+server.listen(PORT, () => {
+  console.log(`HTTP + WebSocket server running on port ${PORT}`);
 });
