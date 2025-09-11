@@ -2,9 +2,11 @@ const express = require('express');
 const app = express();
 const multer = require('multer');
 const cors = require('cors');
+const WebSocket = require('ws');
 
 const PORT = process.env.PORT || 10000;
 
+// ===== Middleware =====
 app.use(cors());
 app.use(express.static('public'));
 app.use(express.json());
@@ -12,7 +14,7 @@ app.use(express.json());
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
-// ========== VIDEO PART ==========
+// ===== VIDEO PART =====
 let latestImage = null;
 
 app.post('/upload', upload.single('image'), (req, res) => {
@@ -75,9 +77,9 @@ app.get('/stream', (req, res) => {
   });
 });
 
-// ========== DOOR LOCK CONTROL ==========
+// ===== DOOR LOCK =====
 let doorState = "locked";
-let alertState = false; // for pushbutton
+let alertState = false;
 
 app.post('/unlock', (req, res) => {
   console.log("Unlock request received at", new Date().toISOString());
@@ -95,12 +97,30 @@ app.get('/status', (req, res) => {
   res.json({ door: doorState, alert: alertState });
 });
 
-// ========== ALERT ENDPOINT ==========
+// ===== WEBSOCKET SERVER =====
+const wss = new WebSocket.Server({ port: 8080 });
+let clients = [];
+
+wss.on('connection', (ws) => {
+  clients.push(ws);
+  console.log("Flutter client connected via WebSocket");
+
+  ws.on('close', () => {
+    clients = clients.filter(c => c !== ws);
+    console.log("Flutter client disconnected");
+  });
+});
+
+// ===== ALERT ENDPOINT =====
 app.post('/alert', (req, res) => {
   console.log("Alert received from ESP32 at", new Date().toISOString());
   alertState = true;
 
-  // Auto clear after 5s if Flutter hasn’t fetched it
+  // Send push to all connected WebSocket clients
+  const message = JSON.stringify({ type: "alert", message: "Push button pressed!" });
+  clients.forEach(c => c.send(message));
+
+  // Auto clear after 5s
   setTimeout(() => {
     alertState = false;
   }, 5000);
@@ -108,7 +128,7 @@ app.post('/alert', (req, res) => {
   res.json({ status: "ok", alert: true });
 });
 
-// ========== START SERVER ==========
+// ===== START SERVER =====
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
