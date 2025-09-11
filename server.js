@@ -7,7 +7,7 @@ const PORT = process.env.PORT || 10000;
 
 app.use(cors());
 app.use(express.static('public'));
-app.use(express.json()); // for JSON API requests
+app.use(express.json());
 
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
@@ -76,16 +76,15 @@ app.get('/stream', (req, res) => {
 });
 
 // ========== DOOR LOCK CONTROL ==========
-let doorState = "locked"; // memory only
+let doorState = "locked";
+let alertState = false; // for pushbutton
 
 app.post('/unlock', (req, res) => {
   console.log("Unlock request received at", new Date().toISOString());
   doorState = "unlocked";
 
-  // TODO: Forward this command to ESP32 via WebSocket/MQTT/HTTP
-  // For now just simulate unlock:
   setTimeout(() => {
-    doorState = "locked"; // auto lock again after 5s
+    doorState = "locked";
     console.log("Door auto-locked");
   }, 5000);
 
@@ -93,46 +92,23 @@ app.post('/unlock', (req, res) => {
 });
 
 app.get('/status', (req, res) => {
-  res.json({ door: doorState });
+  res.json({ door: doorState, alert: alertState });
 });
 
-// ========== HTML TEST PAGE ==========
-app.get('/', (req, res) => {
-  res.send(`
-    <html>
-      <head><title>ESP32-CAM Intercom</title></head>
-      <body>
-        <h1>ESP32-CAM Video Stream + Door Lock</h1>
-        <img id="video" src="/latest" style="width:100%; max-width:400px;"><br><br>
+// ========== ALERT ENDPOINT ==========
+app.post('/alert', (req, res) => {
+  console.log("Alert received from ESP32 at", new Date().toISOString());
+  alertState = true;
 
-        <button onclick="unlockDoor()">Unlock Door</button>
-        <p id="status">Door: locked</p>
+  // Auto clear after 5s if Flutter hasn’t fetched it
+  setTimeout(() => {
+    alertState = false;
+  }, 5000);
 
-        <script>
-          // Video refresh
-          setInterval(() => {
-            document.getElementById('video').src = '/latest?' + new Date().getTime();
-          }, 100);
-
-          // Unlock function
-          async function unlockDoor() {
-            const res = await fetch('/unlock', { method: 'POST' });
-            const data = await res.json();
-            document.getElementById('status').innerText = "Door: " + data.door;
-          }
-
-          // Poll door status
-          setInterval(async () => {
-            const res = await fetch('/status');
-            const data = await res.json();
-            document.getElementById('status').innerText = "Door: " + data.door;
-          }, 1000);
-        </script>
-      </body>
-    </html>
-  `);
+  res.json({ status: "ok", alert: true });
 });
 
+// ========== START SERVER ==========
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
