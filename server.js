@@ -7,6 +7,7 @@ const PORT = process.env.PORT || 10000;
 
 app.use(cors());
 app.use(express.static('public'));
+app.use(express.json()); // for JSON API requests
 
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
@@ -74,19 +75,58 @@ app.get('/stream', (req, res) => {
   });
 });
 
+// ========== DOOR LOCK CONTROL ==========
+let doorState = "locked"; // memory only
+
+app.post('/unlock', (req, res) => {
+  console.log("Unlock request received at", new Date().toISOString());
+  doorState = "unlocked";
+
+  // TODO: Forward this command to ESP32 via WebSocket/MQTT/HTTP
+  // For now just simulate unlock:
+  setTimeout(() => {
+    doorState = "locked"; // auto lock again after 5s
+    console.log("Door auto-locked");
+  }, 5000);
+
+  res.json({ status: "ok", action: "unlock", door: doorState });
+});
+
+app.get('/status', (req, res) => {
+  res.json({ door: doorState });
+});
+
 // ========== HTML TEST PAGE ==========
 app.get('/', (req, res) => {
   res.send(`
     <html>
-      <head><title>ESP32-CAM Video</title></head>
+      <head><title>ESP32-CAM Intercom</title></head>
       <body>
-        <h1>ESP32-CAM Video Stream</h1>
-        <img id="video" src="/latest" style="width:100%; max-width:400px;">
+        <h1>ESP32-CAM Video Stream + Door Lock</h1>
+        <img id="video" src="/latest" style="width:100%; max-width:400px;"><br><br>
+
+        <button onclick="unlockDoor()">Unlock Door</button>
+        <p id="status">Door: locked</p>
 
         <script>
+          // Video refresh
           setInterval(() => {
             document.getElementById('video').src = '/latest?' + new Date().getTime();
           }, 100);
+
+          // Unlock function
+          async function unlockDoor() {
+            const res = await fetch('/unlock', { method: 'POST' });
+            const data = await res.json();
+            document.getElementById('status').innerText = "Door: " + data.door;
+          }
+
+          // Poll door status
+          setInterval(async () => {
+            const res = await fetch('/status');
+            const data = await res.json();
+            document.getElementById('status').innerText = "Door: " + data.door;
+          }, 1000);
         </script>
       </body>
     </html>
