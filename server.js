@@ -15,6 +15,7 @@ const upload = multer({ storage });
 // ========== VIDEO PART ==========
 let latestImage = null;
 
+// ESP32 uploads images
 app.post('/upload', upload.single('image'), (req, res) => {
   if (req.file && req.file.buffer) {
     latestImage = req.file.buffer;
@@ -25,19 +26,22 @@ app.post('/upload', upload.single('image'), (req, res) => {
   }
 });
 
+// Get latest snapshot
 app.get('/latest', (req, res) => {
   if (latestImage) {
     res.writeHead(200, {
       'Content-Type': 'image/jpeg',
       'Content-Length': latestImage.length,
-      'Cache-Control': 'no-cache'
+      'Cache-Control': 'no-cache',
     });
     res.write(latestImage);
+    res.end();
   } else {
     res.status(404).send('No image available');
   }
 });
 
+// MJPEG stream
 app.get('/stream', (req, res) => {
   res.writeHead(200, {
     'Content-Type': 'multipart/x-mixed-replace; boundary=frame',
@@ -59,38 +63,8 @@ app.get('/stream', (req, res) => {
   req.on('close', () => clearInterval(interval));
 });
 
-// ========== DOOR LOCK ==========
-let doorState = "locked";
-let alertState = false;
-
-app.post('/unlock', (req, res) => {
-  console.log("Unlock request received at", new Date().toISOString());
-  doorState = "unlocked";
-
-  setTimeout(() => {
-    doorState = "locked";
-    console.log("Door auto-locked");
-  }, 5000);
-
-  res.json({ status: "ok", action: "unlock", door: doorState });
-});
-
-app.get('/status', (req, res) => {
-  res.json({ door: doorState, alert: alertState });
-});
-
-// ========== ALERT ENDPOINT ==========
-app.post('/alert', (req, res) => {
-  console.log("Alert received from ESP32 at", new Date().toISOString());
-  alertState = true;
-
-  // auto clear after 5s
-  setTimeout(() => { alertState = false; }, 5000);
-
-  res.json({ status: "ok", alert: true });
-});
-
 // ========== START SERVER ==========
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  console.log(`Intercom (Video) available at: https://espcam-server.onrender.com`);
 });
