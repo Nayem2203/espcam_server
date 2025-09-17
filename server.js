@@ -1,18 +1,21 @@
 const express = require('express');
 const multer = require('multer');
 const cors = require('cors');
+const http = require('http');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
 
 app.use(cors());
-app.use(express.static('public'));
 app.use(express.json());
 
-const storage = multer.memoryStorage();
-const upload = multer({ storage });
+const server = http.createServer(app);
+const { Server } = require("socket.io");
+const io = new Server(server, { cors: { origin: "*" } });
 
 // ========== VIDEO PART ==========
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
 let latestImage = null;
 
 app.post('/upload', upload.single('image'), (req, res) => {
@@ -20,9 +23,7 @@ app.post('/upload', upload.single('image'), (req, res) => {
     latestImage = req.file.buffer;
     console.log('Image uploaded:', latestImage.length, new Date().toISOString());
     res.sendStatus(200);
-  } else {
-    res.sendStatus(400);
-  }
+  } else res.sendStatus(400);
 });
 
 app.get('/latest', (req, res) => {
@@ -33,88 +34,48 @@ app.get('/latest', (req, res) => {
       'Cache-Control': 'no-cache'
     });
     res.write(latestImage);
-  } else {
-    res.status(404).send('No image available');
-  }
-});
-
-app.get('/stream', (req, res) => {
-  res.writeHead(200, {
-    'Content-Type': 'multipart/x-mixed-replace; boundary=frame',
-    'Cache-Control': 'no-cache',
-    'Connection': 'close',
-    'Pragma': 'no-cache',
-  });
-
-  const interval = setInterval(() => {
-    if (latestImage) {
-      res.write(`--frame\r\n`);
-      res.write(`Content-Type: image/jpeg\r\n`);
-      res.write(`Content-Length: ${latestImage.length}\r\n\r\n`);
-      res.write(latestImage);
-      res.write('\r\n');
-    }
-  }, 100);
-
-  req.on('close', () => clearInterval(interval));
+  } else res.status(404).send('No image available');
 });
 
 // ========== DOOR LOCK ==========
 let doorState = "locked";
-let alertState = false;
 
 app.post('/unlock', (req, res) => {
-  console.log("Unlock request received at", new Date().toISOString());
   doorState = "unlocked";
-
+  console.log("Door unlocked");
   setTimeout(() => {
     doorState = "locked";
     console.log("Door auto-locked");
   }, 5000);
-
-  res.json({ status: "ok", action: "unlock", door: doorState });
+  res.json({ status: "ok", door: doorState });
 });
 
 app.get('/status', (req, res) => {
-  res.json({ door: doorState, alert: alertState });
+  res.json({ door: doorState });
 });
 
-// ========== ALERT ENDPOINT (FLAME & GAS) ==========
-let latestAlert = null;
-
+// ========== ALERT ENDPOINT ==========
 app.post('/alert', (req, res) => {
-  const { type, value } = req.body; // type = "flame" or "gas"
+  const { type, value } = req.body;
+  if (!type || !value) return res.status(400).json({ status: "error", message: "type/value required" });
 
-  if (!type || !value) {
-    return res.status(400).json({ status: "error", message: "type and value required" });
-  }
+  const alertData = { type, value, timestamp: new Date().toISOString() };
+  console.log("Alert received:", alertData);
 
-  latestAlert = { type, value, timestamp: new Date().toISOString() };
-  alertState = true;
+  // Emit to all connected clients via WebSocket
+  io.emit('alert', alertData);
 
-  console.log(`Alert received: ${type} detected (value=${value}) at`, latestAlert.timestamp);
-
-  // auto-clear after 5s
-  setTimeout(() => { 
-    alertState = false;
-    latestAlert = null;
-  }, 5000);
-
-  // Here you can trigger a push notification via FCM / Pusher / Socket.io
-  // Example: sendPushNotification(type, value);
-
-  res.json({ status: "ok", alert: latestAlert });
+  res.json({ status: "ok", alert: alertData });
 });
 
-app.get('/latest-alert', (req, res) => {
-  if (latestAlert) {
-    res.json(latestAlert);
-  } else {
-    res.status(404).json({ status: "none", message: "No alert active" });
-  }
+// ========== SOCKET.IO CONNECTION ==========
+io.on('connection', (socket) => {
+  console.log("Client connected:", socket.id);
+
+  socket.on('disconnect', () => {
+    console.log("Client disconnected:", socket.id);
+  });
 });
 
 // ========== START SERVER ==========
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
