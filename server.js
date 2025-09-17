@@ -79,15 +79,39 @@ app.get('/status', (req, res) => {
   res.json({ door: doorState, alert: alertState });
 });
 
-// ========== ALERT ENDPOINT ==========
+// ========== ALERT ENDPOINT (FLAME & GAS) ==========
+let latestAlert = null;
+
 app.post('/alert', (req, res) => {
-  console.log("Alert received from ESP32 at", new Date().toISOString());
+  const { type, value } = req.body; // type = "flame" or "gas"
+
+  if (!type || !value) {
+    return res.status(400).json({ status: "error", message: "type and value required" });
+  }
+
+  latestAlert = { type, value, timestamp: new Date().toISOString() };
   alertState = true;
 
-  // auto clear after 5s
-  setTimeout(() => { alertState = false; }, 5000);
+  console.log(`Alert received: ${type} detected (value=${value}) at`, latestAlert.timestamp);
 
-  res.json({ status: "ok", alert: true });
+  // auto-clear after 5s
+  setTimeout(() => { 
+    alertState = false;
+    latestAlert = null;
+  }, 5000);
+
+  // Here you can trigger a push notification via FCM / Pusher / Socket.io
+  // Example: sendPushNotification(type, value);
+
+  res.json({ status: "ok", alert: latestAlert });
+});
+
+app.get('/latest-alert', (req, res) => {
+  if (latestAlert) {
+    res.json(latestAlert);
+  } else {
+    res.status(404).json({ status: "none", message: "No alert active" });
+  }
 });
 
 // ========== START SERVER ==========
