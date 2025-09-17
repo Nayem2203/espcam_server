@@ -9,10 +9,6 @@ const PORT = process.env.PORT || 10000;
 app.use(cors());
 app.use(express.json());
 
-const server = http.createServer(app);
-const { Server } = require("socket.io");
-const io = new Server(server, { cors: { origin: "*" } });
-
 // ========== VIDEO PART ==========
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
@@ -41,12 +37,14 @@ app.get('/latest', (req, res) => {
 let doorState = "locked";
 
 app.post('/unlock', (req, res) => {
+  console.log("Unlock request received at", new Date().toISOString());
   doorState = "unlocked";
-  console.log("Door unlocked");
+
   setTimeout(() => {
     doorState = "locked";
     console.log("Door auto-locked");
   }, 5000);
+
   res.json({ status: "ok", door: doorState });
 });
 
@@ -68,10 +66,13 @@ app.post('/alert', (req, res) => {
   res.json({ status: "ok", alert: alertData });
 });
 
-// ========== SOCKET.IO CONNECTION ==========
+// ========== SOCKET.IO ==========
+const server = http.createServer(app);
+const { Server } = require("socket.io");
+const io = new Server(server, { cors: { origin: "*" } });
+
 io.on('connection', (socket) => {
   console.log("Client connected:", socket.id);
-
   socket.on('disconnect', () => {
     console.log("Client disconnected:", socket.id);
   });
