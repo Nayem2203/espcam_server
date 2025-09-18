@@ -9,9 +9,12 @@ const PORT = process.env.PORT || 10000;
 app.use(cors());
 app.use(express.json());
 
+// ===== Multer config for image upload =====
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
+
 // ========== VIDEO PART ==========
 let latestImage = null;
-
 
 app.post('/upload', upload.single('image'), (req, res) => {
   try {
@@ -28,7 +31,6 @@ app.post('/upload', upload.single('image'), (req, res) => {
     res.sendStatus(500);
   }
 });
-
 
 app.get('/latest', (req, res) => {
   try {
@@ -47,7 +49,6 @@ app.get('/latest', (req, res) => {
   }
 });
 
-
 app.get('/stream', (req, res) => {
   res.writeHead(200, {
     'Content-Type': 'multipart/x-mixed-replace; boundary=frame',
@@ -55,7 +56,6 @@ app.get('/stream', (req, res) => {
     'Connection': 'close',
     'Pragma': 'no-cache',
   });
-
 
   const interval = setInterval(() => {
     try {
@@ -70,7 +70,6 @@ app.get('/stream', (req, res) => {
       console.error('Stream error:', err.message);
     }
   }, 100);
-
 
   req.on('close', () => {
     clearInterval(interval);
